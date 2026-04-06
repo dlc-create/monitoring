@@ -1,0 +1,122 @@
+<!-- ══ EMAIL ANNOUNCE MODAL ══ -->
+<!-- PASTE THIS right above the existing <div id="pwa-banner"> line in index.html -->
+
+<div id="announce-overlay" onclick="closeAnnounceModal(event)">
+  <div class="announce-card" onclick="event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="announce-header">
+      <div class="announce-header-left">
+        <div class="announce-icon">📢</div>
+        <div>
+          <div class="announce-title">Announce to Professors</div>
+          <div class="announce-subtitle" id="ann-subtitle">Send email reminders to faculty</div>
+        </div>
+      </div>
+      <button class="announce-close" onclick="closeAnnounceModal()">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div class="announce-body">
+
+      <!-- Scope pills -->
+      <div class="compose-label"><span class="cl-accent">📋</span> Target Scope</div>
+      <div class="scope-pills">
+        <button class="scope-pill active" data-scope="missing" onclick="setAnnounceScope('missing',this)">❌ Missing Only</button>
+        <button class="scope-pill" data-scope="all"     onclick="setAnnounceScope('all',this)">👥 All Professors</button>
+        <button class="scope-pill" data-scope="dept"    onclick="setAnnounceScope('dept',this)">🏢 Current Dept</button>
+        <button class="scope-pill" data-scope="alldepts" onclick="setAnnounceScope('alldepts',this)">🏫 All Departments</button>
+      </div>
+
+      <!-- Live preview stats -->
+      <div class="announce-preview">
+        <div class="ap-stat">
+          <div class="ap-stat-val" id="ann-stat-total" style="color:var(--gold)">—</div>
+          <div class="ap-stat-lbl">Recipients</div>
+        </div>
+        <div class="ap-stat">
+          <div class="ap-stat-val" id="ann-stat-missing" style="color:var(--red)">—</div>
+          <div class="ap-stat-lbl">No Upload</div>
+        </div>
+        <div class="ap-stat">
+          <div class="ap-stat-val" id="ann-stat-week" style="color:var(--blue)">W—</div>
+          <div class="ap-stat-lbl">Active Week</div>
+        </div>
+      </div>
+
+      <!-- Subject -->
+      <div class="compose-label"><span class="cl-accent">✉️</span> Email Subject</div>
+      <input type="text" class="compose-subject" id="ann-subject"
+        value="📌 [PCC] ACTION REQUIRED: Weekly Learning Material Upload Reminder">
+
+      <!-- Body -->
+      <div class="compose-label">
+        <span class="cl-accent">📝</span> Additional Message
+        <span style="color:var(--t3);font-weight:500;text-transform:none;letter-spacing:0;font-size:11px">(optional)</span>
+      </div>
+      <textarea class="compose-body" id="ann-body"
+        placeholder="Add a personal note or extra instructions…&#10;&#10;Leave blank to send the standard institutional reminder only.&#10;&#10;Tokens: {professor} {course} {week} {dept}"></textarea>
+      <div class="compose-hint">
+        The standard formal reminder is always included. Your message is appended as an additional note.
+        Available tokens: <code>{professor}</code> <code>{course}</code> <code>{week}</code> <code>{dept}</code>
+      </div>
+
+      <!-- Options -->
+      <div class="target-row" style="margin-top:14px">
+        <label>
+          <input type="checkbox" id="ann-cc-heads" checked>
+          <div>
+            <div>CC Department Heads on each email</div>
+            <div class="target-desc">Dept heads receive a copy of every reminder sent to their faculty.</div>
+          </div>
+        </label>
+      </div>
+      <div class="target-row">
+        <label>
+          <input type="checkbox" id="ann-send-summary" checked>
+          <div>
+            <div>Send summary digest to Admin</div>
+            <div class="target-desc">Full breakdown report sent to dlc@paranaquecitycollege.edu.ph after sending.</div>
+          </div>
+        </label>
+      </div>
+
+    </div><!-- /announce-body -->
+
+    <!-- Sending progress bar -->
+    <div class="announce-progress" id="ann-progress">
+      <div class="prog-status" id="ann-prog-status">⏳ Preparing emails…</div>
+      <div class="prog-bar-wrap">
+        <div class="prog-bar-fill" id="ann-prog-bar" style="width:20%"></div>
+      </div>
+    </div>
+
+    <!-- Result panel -->
+    <div class="announce-result" id="ann-result">
+      <div style="font-size:15px;font-weight:800;color:var(--t1);margin-bottom:4px" id="ann-result-title">✅ Done!</div>
+      <div style="font-size:13px;color:var(--t3);margin-bottom:4px" id="ann-result-sub">—</div>
+      <div class="result-grid">
+        <div class="rg-item"><div class="rg-val" id="rg-sent"   style="color:var(--green)">0</div><div class="rg-lbl">Sent</div></div>
+        <div class="rg-item"><div class="rg-val" id="rg-failed" style="color:var(--red)">0</div><div class="rg-lbl">Failed</div></div>
+        <div class="rg-item"><div class="rg-val" id="rg-week"   style="color:var(--gold)">—</div><div class="rg-lbl">Week</div></div>
+      </div>
+      <div id="rg-failed-list" style="margin-top:10px;display:none"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="announce-footer">
+      <div class="announce-footer-info">
+        From: <strong>PCC Academic Affairs</strong><br>
+        <span id="ann-footer-scope" style="color:var(--t3)">—</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" onclick="closeAnnounceModal()" id="ann-btn-cancel">Cancel</button>
+        <button class="btn-send-announce" id="ann-btn-send" onclick="sendAnnounce()">
+          <span id="ann-btn-icon">📧</span>
+          <span id="ann-btn-label">Send Emails</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
