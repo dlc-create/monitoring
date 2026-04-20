@@ -5510,8 +5510,11 @@ async function syncClassrooms() {
       const script = document.createElement('script');
       window[cbName] = (data) => { delete window[cbName]; document.body.removeChild(script); resolve(data); };
       script.onerror = () => { delete window[cbName]; document.body.removeChild(script); reject(new Error('Sync failed')); };
-      script.src = WEBAPP_URL + '?action=syncClassrooms' + sheetParam + '&callback=' + cbName;
-      document.body.appendChild(script);
+     document.body.appendChild(script);
+script.src = WEBAPP_URL
+  + '?action=syncClassrooms'
+  + '&sheet=' + encodeURIComponent(dept.sheet)
+  + '&callback=' + cbName;
     });
     btn.disabled = false; btn.textContent = '🎓 Sync Classrooms';
     if (result && result.ok) {
@@ -5556,7 +5559,7 @@ function openSyncAllModal() {
       opt.textContent = d.label;
       sallSel.appendChild(opt);
     });
-    if (window.S.sheet) sallSel.value = window.S.sheet;
+    
   }
 }
 
@@ -5670,7 +5673,7 @@ async function startSyncAll() {
 const sheetList = filterVal ? ALL_DEPTS.filter(d => d.sheet === filterVal) : ALL_DEPTS;
 const _fv = (document.getElementById('sall-dept-filter')?.value || '').trim();
 const _fl = _fv ? ALL_DEPTS.filter(d => d.sheet === _fv).length : ALL_DEPTS.length;
-document.getElementById('sall-pct-label').textContent = '0 / ' + _fl + ' departments';
+document.getElementById('sall-pct-label').textContent = '0 / ' + sheetList.length + ' departments';
 
 for (let i = 0; i < sheetList.length; i++) {
     if (_syncAllAbort) {
@@ -5723,10 +5726,9 @@ for (let i = 0; i < sheetList.length; i++) {
     }
 
     _syncAllTotals.done++;
-    const pct = Math.round((_syncAllTotals.done / ALL_DEPTS.length) * 100);
-    document.getElementById('sall-bar').style.width       = pct + '%';
-    document.getElementById('sall-pct-label').textContent =
-      _syncAllTotals.done + ' / ' + ALL_DEPTS.length + ' departments (' + pct + '%)';
+  const pct = Math.round((_syncAllTotals.done / sheetList.length) * 100);
+document.getElementById('sall-pct-label').textContent =
+  _syncAllTotals.done + ' / ' + sheetList.length + ' departments (' + pct + '%)';
     document.getElementById('sall-s-done').textContent    = _syncAllTotals.done;
     document.getElementById('sall-s-checked').textContent = _syncAllTotals.checked;
     document.getElementById('sall-s-err').textContent     = _syncAllTotals.err;
@@ -5803,8 +5805,22 @@ for (let i = 0; i < sheetList.length; i++) {
     <!-- Body -->
 <div style="flex:1;overflow-y:auto;padding:20px 26px;" id="sall-body">
 
-<select id="sall-dept-filter"
-    style="...">
+<div style="background:var(--bg3);border:1.5px solid var(--border);
+            border-radius:12px;padding:14px 18px;margin-bottom:16px;">
+  <div style="font-size:11px;font-weight:800;text-transform:uppercase;
+              letter-spacing:.1em;color:var(--t3);margin-bottom:8px;">
+    🎯 Sync Target
+  </div>
+  <select id="sall-dept-filter"
+    style="width:100%;padding:10px 14px;border-radius:10px;
+           border:2px solid var(--border2);background:var(--input-bg);
+           color:var(--t1);font-family:inherit;font-size:14px;
+           font-weight:600;outline:none;-webkit-appearance:none;">
+    <option value="">🏫 All Departments</option>
+  </select>
+</div>
+
+<!-- result banner, progress bar, dept list etc below -->
   <!-- result banner, progress bar, dept list etc below -->
 
 
