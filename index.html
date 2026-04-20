@@ -5651,13 +5651,17 @@ async function startSyncAll() {
 
   _sallLog('Starting sync for ' + ALL_DEPTS.length + ' departments…', 'info');
 
-  for (let i = 0; i < ALL_DEPTS.length; i++) {
+  const filterVal = (document.getElementById('sall-dept-filter')?.value || '').trim();
+const sheetList = filterVal ? ALL_DEPTS.filter(d => d.sheet === filterVal) : ALL_DEPTS;
+document.getElementById('sall-pct-label').textContent = '0 / ' + sheetList.length + ' departments';
+
+for (let i = 0; i < sheetList.length; i++) {
     if (_syncAllAbort) {
       _sallLog('Stopped by user after ' + i + ' departments.', 'err');
       break;
     }
 
-    const dept = ALL_DEPTS[i];
+    const dept = sheetList[i];
     _sallSetDept(dept.key, 'active', 'Syncing classrooms…', 'Syncing');
     document.getElementById('sall-subtitle').textContent = 'Syncing ' + dept.label + '…';
     _sallLog('→ ' + dept.label, 'info');
