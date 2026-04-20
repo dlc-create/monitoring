@@ -5513,7 +5513,7 @@ async function syncClassrooms() {
      document.body.appendChild(script);
 script.src = WEBAPP_URL
   + '?action=syncClassrooms'
-  + '&sheet=' + encodeURIComponent(dept.sheet)
+  + sheetParam
   + '&callback=' + cbName;
     });
     btn.disabled = false; btn.textContent = '🎓 Sync Classrooms';
@@ -5714,6 +5714,7 @@ setTimeout(() => {
     + '&sheet=' + encodeURIComponent(dept.sheet)
     + '&callback=' + cbName;
 }, 0);
+     });
 
       const updated = result.updated || 0;
       _sallSetDept(dept.key, 'done', updated + ' checkboxes updated', 'Done ✓');
