@@ -5517,7 +5517,7 @@ script.src = WEBAPP_URL
   + '&callback=' + cbName;
     });
     btn.disabled = false; btn.textContent = '🎓 Sync Classrooms';
-    if (result && result.ok) {
+    if (result && result.ok) {  
       _setSyncStatus('saved', result.updated + ' checkboxes synced ✓');
       setTimeout(() => _setSyncStatus('', ''), 4000);
       toast('✅ Sync done! ' + result.updated + ' checkboxes updated. Refreshing…', 'ok');
@@ -5701,18 +5701,19 @@ for (let i = 0; i < sheetList.length; i++) {
           document.body.removeChild(script);
           resolve(data);
         };
-        script.onerror = () => {
-          clearTimeout(timeout);
-          delete window[cbName];
-          document.body.removeChild(script);
-          reject(new Error('Script load failed'));
-        };
-        script.src = WEBAPP_URL
-          + '?action=syncClassrooms'
-          + '&sheet=' + encodeURIComponent(dept.sheet)
-          + '&callback=' + cbName;
-        document.body.appendChild(script);
-      });
+     script.onerror = () => {
+  clearTimeout(timeout);
+  delete window[cbName];
+  document.body.removeChild(script);
+  reject(new Error('Script load failed'));
+};
+document.body.appendChild(script);
+setTimeout(() => {
+  script.src = WEBAPP_URL
+    + '?action=syncClassrooms'
+    + '&sheet=' + encodeURIComponent(dept.sheet)
+    + '&callback=' + cbName;
+}, 0);
 
       const updated = result.updated || 0;
       _sallSetDept(dept.key, 'done', updated + ' checkboxes updated', 'Done ✓');
