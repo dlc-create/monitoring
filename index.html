@@ -1283,6 +1283,13 @@ footer{text-align:center;padding:clamp(14px,3vw,22px) clamp(16px,3vw,32px);font-
   ＋ Add Professor
 </button>
 
+<button class="btn btn-outline btn-sm" id="btn-sync-all"
+  onclick="openSyncAllModal()" style="display:none"
+  title="Sync ALL departments at once">
+  🔄 Sync All Depts
+</button>
+
+
 <button class="btn btn-danger btn-sm" onclick="signOut()">Sign Out</button>
 
     </div>
@@ -1414,7 +1421,7 @@ footer{text-align:center;padding:clamp(14px,3vw,22px) clamp(16px,3vw,32px);font-
 
 <div id="toast"></div>
 
-<footer>🏫 Paranaque City College &nbsp;·&nbsp; Weekly Material Monitoring System &nbsp;·&nbsp; 2nd Semester A.Y. 2025–2026 &nbsp;·&nbsp; 🔒 Role-Restricted &nbsp;·&nbsp; Two-Way Sheet Sync</footer>
+<footer>Created by Innovation Department &nbsp;·&nbsp; Weekly Material Monitoring System &nbsp;·&nbsp; 2nd Semester A.Y. 2025–2026 &nbsp;·&nbsp; 🔒 Role-Restricted &nbsp;·&nbsp; Two-Way Sheet Sync</footer>
 
 <!-- ══ ANNOUNCE MODAL ══ -->
 <div id="announce-overlay" onclick="closeAnnounceModal(event)">
@@ -1803,7 +1810,8 @@ buildDeptSwitcher();
 
 if(window.S.role==='admin'){
   ['btn-announce','btn-clear-dept','btn-add-prof',
- 'btn-delete-dept','btn-add-dept','btn-refresh','btn-verify-emails'].forEach(id=>{
+ 'btn-delete-dept','btn-add-dept','btn-refresh',
+ 'btn-verify-emails','btn-sync-classrooms','btn-sync-all'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.style.display='';
   });
@@ -2100,8 +2108,8 @@ const bc = matchedDept ? 'b-' + matchedDept.key : '';
     const courseDisplay=mob&&r.course.length>14?r.course.substring(0,13)+'…':r.course;
 h += `<tr>
   <td class="td-num td-frozen">${di+1}</td>
-  <td class="td-prof td-frozen-prof" title="${esc(r.professor)}">
-    <span style="display:inline-flex;align-items:center;gap:7px;">
+  <td class="td-prof td-frozen-prof" title="${esc(r.professor)}" style="${r.done === 0 ? 'background:rgba(240,82,82,.18) !important;' : ''}">
+    <span style="display:inline-flex;align-items:center;gap:7px;${r.done === 0 ? 'color:var(--red);font-weight:900;' : ''}">
       <button onclick="event.stopPropagation();openEditProfModal(${i})"
         style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:6px;
                font-size:13px;opacity:.45;transition:all .22s cubic-bezier(.34,1.56,.64,1);
@@ -5488,7 +5496,385 @@ async function veSaveAll() {
   }, 3000);
 }
 
+async function syncClassrooms() {
+  if (window.S.role !== 'admin') { toast('⛔ Admin only', 'err'); return; }
+  if (!confirm('🎓 Sync Google Classroom uploads?\n\nChecks all professor classrooms and auto-updates checkboxes.\n⏱ May take 2–5 minutes.\nProceed?')) return;
+  const btn = document.getElementById('btn-sync-classrooms');
+  btn.disabled = true; btn.textContent = '⏳ Syncing…';
+  _setSyncStatus('saving', 'Syncing Classrooms…');
+  toast('🎓 Classroom sync started…', 'ok');
+  try {
+    const sheetParam = window.S.sheet ? '&sheet=' + encodeURIComponent(window.S.sheet) : '';
+    const result = await new Promise((resolve, reject) => {
+      const cbName = 'pcc_sync_' + Date.now();
+      const script = document.createElement('script');
+      window[cbName] = (data) => { delete window[cbName]; document.body.removeChild(script); resolve(data); };
+      script.onerror = () => { delete window[cbName]; document.body.removeChild(script); reject(new Error('Sync failed')); };
+      script.src = WEBAPP_URL + '?action=syncClassrooms' + sheetParam + '&callback=' + cbName;
+      document.body.appendChild(script);
+    });
+    btn.disabled = false; btn.textContent = '🎓 Sync Classrooms';
+    if (result && result.ok) {
+      _setSyncStatus('saved', result.updated + ' checkboxes synced ✓');
+      setTimeout(() => _setSyncStatus('', ''), 4000);
+      toast('✅ Sync done! ' + result.updated + ' checkboxes updated. Refreshing…', 'ok');
+      setTimeout(() => reloadCurrent(), 1500);
+    } else {
+      toast('⚠️ ' + (result?.error || 'Sync error'), 'warn');
+      _setSyncStatus('error', 'Sync error'); setTimeout(() => _setSyncStatus('', ''), 4000);
+    }
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '🎓 Sync Classrooms';
+    _setSyncStatus('error', 'Sync failed'); setTimeout(() => _setSyncStatus('', ''), 4000);
+    toast('❌ ' + e.message, 'err');
+  }
+}
+
+
+/* ══ SYNC ALL DEPARTMENTS ══ */
+let _syncAllRunning = false;
+let _syncAllAbort   = false;
+let _syncAllTotals  = { done:0, checked:0, profs:0, err:0 };
+
+function openSyncAllModal() {
+  if (window.S.role !== 'admin') { toast('⛔ Admin only', 'err'); return; }
+  if (!ALL_DEPTS.length) { toast('Load departments first', 'err'); return; }
+  _syncAllAbort   = false;
+  _syncAllRunning = false;
+  _syncAllTotals  = { done:0, checked:0, profs:0, err:0 };
+  _sallBuildRows();
+  _sallResetUI();
+  document.getElementById('sync-all-overlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSyncAllModal(e) {
+  if (e && e.target !== document.getElementById('sync-all-overlay')) return;
+  if (_syncAllRunning) { _syncAllAbort = true; }
+  document.getElementById('sync-all-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function _sallResetUI() {
+  document.getElementById('sall-bar').style.width         = '0%';
+  document.getElementById('sall-pct-label').textContent   = '0 / ' + ALL_DEPTS.length + ' departments';
+  document.getElementById('sall-s-done').textContent      = '0';
+  document.getElementById('sall-s-checked').textContent   = '0';
+  document.getElementById('sall-s-profs').textContent     = '0';
+  document.getElementById('sall-s-err').textContent       = '0';
+  document.getElementById('sall-result-banner').style.display = 'none';
+  document.getElementById('sall-log').style.display       = 'none';
+  document.getElementById('sall-log').innerHTML           = '';
+  document.getElementById('sall-start-btn').disabled      = false;
+  document.getElementById('sall-start-label').textContent = 'Sync All Now';
+  document.getElementById('sall-cancel-btn').textContent  = 'Cancel';
+  document.getElementById('sall-foot-txt').innerHTML      =
+    'Ready — switching tabs will <strong style="color:var(--t2);">not</strong> stop the sync';
+  document.getElementById('sall-subtitle').textContent    =
+    'Checks Google Classroom uploads for every department';
+}
+
+function _sallBuildRows() {
+  const list = document.getElementById('sall-dept-list');
+  list.innerHTML = ALL_DEPTS.map(d => `
+    <div id="sall-row-${d.key}"
+      style="background:var(--bg3);border:1.5px solid var(--border);border-radius:10px;
+             padding:10px 14px;display:flex;align-items:center;gap:12px;transition:border-color .2s;">
+      <div id="sall-icon-${d.key}"
+        style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;
+               justify-content:center;font-size:14px;flex-shrink:0;
+               background:rgba(128,128,128,.08);border:1.5px solid rgba(128,128,128,.15);">—</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:800;color:var(--t1);">${d.label}</div>
+        <div id="sall-status-${d.key}"
+          style="font-size:11px;color:var(--t3);margin-top:2px;">Waiting…</div>
+      </div>
+      <span id="sall-badge-${d.key}"
+        style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:8px;
+               background:rgba(128,128,128,.1);color:var(--t3);
+               border:1px solid rgba(128,128,128,.2);white-space:nowrap;">Queued</span>
+    </div>
+  `).join('');
+}
+
+function _sallLog(msg, type) {
+  const log = document.getElementById('sall-log');
+  log.style.display = 'block';
+  const ts   = new Date().toLocaleTimeString('en-PH');
+  const line = document.createElement('div');
+  line.style.cssText = 'padding:2px 0;border-bottom:1px solid var(--border);' +
+    (type==='ok'?'color:var(--green);':type==='err'?'color:var(--red);':'color:var(--t3);');
+  line.textContent = '['+ts+'] '+msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function _sallSetDept(key, state, statusTxt, badgeTxt) {
+  const row    = document.getElementById('sall-row-'   + key);
+  const icon   = document.getElementById('sall-icon-'  + key);
+  const status = document.getElementById('sall-status-'+ key);
+  const badge  = document.getElementById('sall-badge-' + key);
+  if (!row) return;
+  const colors = {
+    active:  { border:'rgba(77,163,255,.5)',   icon:'rgba(77,163,255,.15)',  iconBorder:'rgba(77,163,255,.35)',  badge:'rgba(77,163,255,.15)',  badgeColor:'#4DA3FF',  statusColor:'#4DA3FF'  },
+    done:    { border:'rgba(52,212,117,.4)',   icon:'rgba(52,212,117,.12)',  iconBorder:'rgba(52,212,117,.3)',   badge:'rgba(52,212,117,.12)',  badgeColor:'var(--green)', statusColor:'var(--green)' },
+    errored: { border:'rgba(240,82,82,.4)',    icon:'rgba(240,82,82,.12)',   iconBorder:'rgba(240,82,82,.3)',    badge:'rgba(240,82,82,.12)',   badgeColor:'var(--red)',   statusColor:'var(--red)'   },
+  };
+  const c = colors[state] || {};
+  if (c.border) row.style.borderColor = c.border;
+  if (c.icon)   { icon.style.background = c.icon; icon.style.borderColor = c.iconBorder; }
+  if (state === 'active') {
+    icon.innerHTML = '<div style="width:14px;height:14px;border:2px solid rgba(77,163,255,.3);border-top-color:#4DA3FF;border-radius:50%;animation:spin .7s linear infinite;"></div>';
+  } else {
+    icon.textContent = state==='done'?'✓':state==='errored'?'!':'—';
+  }
+  status.style.color    = c.statusColor || 'var(--t3)';
+  status.textContent    = statusTxt;
+  badge.style.background = c.badge    || 'rgba(128,128,128,.1)';
+  badge.style.color      = c.badgeColor|| 'var(--t3)';
+  badge.textContent      = badgeTxt;
+}
+
+async function startSyncAll() {
+  if (_syncAllRunning) return;
+  if (!window.S.token)  { toast('Not signed in', 'err'); return; }
+  if (!WEBAPP_URL)       { toast('WEBAPP_URL not set', 'err'); return; }
+
+  _syncAllRunning = true;
+  _syncAllAbort   = false;
+  _syncAllTotals  = { done:0, checked:0, profs:0, err:0 };
+
+  document.getElementById('sall-start-btn').disabled      = true;
+  document.getElementById('sall-start-label').textContent = 'Syncing…';
+  document.getElementById('sall-cancel-btn').textContent  = 'Stop';
+  document.getElementById('sall-foot-txt').textContent    = 'Sync running — safe to switch tabs';
+
+  _sallLog('Starting sync for ' + ALL_DEPTS.length + ' departments…', 'info');
+
+  for (let i = 0; i < ALL_DEPTS.length; i++) {
+    if (_syncAllAbort) {
+      _sallLog('Stopped by user after ' + i + ' departments.', 'err');
+      break;
+    }
+
+    const dept = ALL_DEPTS[i];
+    _sallSetDept(dept.key, 'active', 'Syncing classrooms…', 'Syncing');
+    document.getElementById('sall-subtitle').textContent = 'Syncing ' + dept.label + '…';
+    _sallLog('→ ' + dept.label, 'info');
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const cbName = 'sall_cb_' + Date.now();
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => {
+          delete window[cbName];
+          document.body.removeChild(script);
+          reject(new Error('Timeout'));
+        }, 360000);
+        window[cbName] = (data) => {
+          clearTimeout(timeout);
+          delete window[cbName];
+          document.body.removeChild(script);
+          resolve(data);
+        };
+        script.onerror = () => {
+          clearTimeout(timeout);
+          delete window[cbName];
+          document.body.removeChild(script);
+          reject(new Error('Script load failed'));
+        };
+        script.src = WEBAPP_URL
+          + '?action=syncClassrooms'
+          + '&sheet=' + encodeURIComponent(dept.sheet)
+          + '&callback=' + cbName;
+        document.body.appendChild(script);
+      });
+
+      const updated = result.updated || 0;
+      _sallSetDept(dept.key, 'done', updated + ' checkboxes updated', 'Done ✓');
+      _sallLog('✓ ' + dept.label + ': ' + updated + ' checkboxes updated', 'ok');
+      _syncAllTotals.checked += updated;
+
+    } catch(e) {
+      _sallSetDept(dept.key, 'errored', 'Error: ' + e.message, 'Error');
+      _sallLog('✗ ' + dept.label + ': ' + e.message, 'err');
+      _syncAllTotals.err++;
+    }
+
+    _syncAllTotals.done++;
+    const pct = Math.round((_syncAllTotals.done / ALL_DEPTS.length) * 100);
+    document.getElementById('sall-bar').style.width       = pct + '%';
+    document.getElementById('sall-pct-label').textContent =
+      _syncAllTotals.done + ' / ' + ALL_DEPTS.length + ' departments (' + pct + '%)';
+    document.getElementById('sall-s-done').textContent    = _syncAllTotals.done;
+    document.getElementById('sall-s-checked').textContent = _syncAllTotals.checked;
+    document.getElementById('sall-s-err').textContent     = _syncAllTotals.err;
+  }
+
+  _syncAllRunning = false;
+  document.getElementById('sall-start-btn').disabled      = false;
+  document.getElementById('sall-start-label').textContent = 'Sync Again';
+  document.getElementById('sall-cancel-btn').textContent  = 'Close';
+  document.getElementById('sall-subtitle').textContent    = 'Sync complete';
+
+  const banner = document.getElementById('sall-result-banner');
+  banner.style.display = 'block';
+  if (_syncAllTotals.err > 0) {
+    banner.style.background   = 'rgba(240,82,82,.1)';
+    banner.style.border       = '1.5px solid rgba(240,82,82,.3)';
+    document.getElementById('sall-result-title').style.color = 'var(--red)';
+    document.getElementById('sall-result-title').textContent = '⚠️ Sync completed with ' + _syncAllTotals.err + ' error(s)';
+  } else {
+    banner.style.background   = 'rgba(52,212,117,.1)';
+    banner.style.border       = '1.5px solid rgba(52,212,117,.3)';
+    document.getElementById('sall-result-title').style.color = 'var(--green)';
+    document.getElementById('sall-result-title').textContent = '✅ All departments synced!';
+  }
+  document.getElementById('sall-result-sub').textContent =
+    _syncAllTotals.checked + ' checkboxes updated across ' + ALL_DEPTS.length + ' departments.';
+
+  toast('🔄 Sync complete — ' + _syncAllTotals.checked + ' checkboxes updated', 'ok');
+
+  if (window.S.sheet) setTimeout(() => reloadCurrent(), 1500);
+}
+
+
 </script>
+
+
+<!-- SYNC ALL DEPARTMENTS MODAL -->
+<div id="sync-all-overlay" onclick="if(!_syncAllRunning)closeSyncAllModal(event)"
+  style="position:fixed;inset:0;z-index:700;display:none;align-items:center;
+         justify-content:center;background:rgba(0,0,0,.82);
+         backdrop-filter:blur(16px);padding:16px;">
+
+  <div onclick="event.stopPropagation()"
+    style="background:var(--card);border:2px solid #4DA3FF;border-radius:26px;
+           width:100%;max-width:620px;max-height:90vh;overflow:hidden;
+           display:flex;flex-direction:column;
+           box-shadow:var(--shadow),0 0 60px rgba(77,163,255,.18);">
+
+    <!-- Header -->
+    <div style="padding:20px 26px 16px;border-bottom:1.5px solid var(--border);
+                background:linear-gradient(135deg,var(--bg2),var(--card));
+                display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:46px;height:46px;border-radius:14px;flex-shrink:0;
+                    background:rgba(77,163,255,.15);border:1.5px solid rgba(77,163,255,.3);
+                    display:flex;align-items:center;justify-content:center;font-size:22px;">🔄</div>
+        <div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;
+                      letter-spacing:.14em;color:#4DA3FF;line-height:1;">Sync All Departments</div>
+          <div style="font-size:12px;color:var(--t3);font-weight:600;margin-top:3px;"
+               id="sall-subtitle">Checks Google Classroom uploads for every department</div>
+        </div>
+      </div>
+      <button onclick="closeSyncAllModal()"
+        style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.06);
+               border:1.5px solid rgba(255,255,255,.12);color:var(--t3);cursor:pointer;
+               display:flex;align-items:center;justify-content:center;font-size:16px;
+               transition:all .18s;font-family:inherit;"
+        onmouseover="this.style.background='rgba(240,82,82,.15)';this.style.borderColor='var(--red)';this.style.color='var(--red)'"
+        onmouseout="this.style.background='rgba(255,255,255,.06)';this.style.borderColor='rgba(255,255,255,.12)';this.style.color='var(--t3)'">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div style="flex:1;overflow-y:auto;padding:20px 26px;" id="sall-body">
+
+      <!-- Result banner -->
+      <div id="sall-result-banner" style="display:none;border-radius:12px;
+           padding:14px 18px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;" id="sall-result-title"></div>
+        <div style="font-size:12px;color:var(--t3);margin-top:3px;" id="sall-result-sub"></div>
+      </div>
+
+      <!-- Overall progress bar -->
+      <div style="background:var(--bg3);border:1.5px solid var(--border);
+                  border-radius:12px;padding:14px 18px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-size:11px;font-weight:800;text-transform:uppercase;
+                       letter-spacing:.1em;color:var(--t3);">Overall Progress</span>
+          <span style="font-size:13px;font-weight:700;color:var(--t2);
+                       font-family:'JetBrains Mono',monospace;" id="sall-pct-label">0 / 0 departments</span>
+        </div>
+        <div style="background:rgba(128,128,128,.15);border-radius:6px;height:8px;overflow:hidden;">
+          <div id="sall-bar" style="height:100%;border-radius:6px;
+               background:linear-gradient(90deg,#4DA3FF,#1D4ED8);
+               transition:width .5s cubic-bezier(.4,0,.2,1);width:0%;"></div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+        <div style="background:var(--bg3);border:1.5px solid var(--border);
+                    border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;
+                      line-height:1;color:var(--gold);" id="sall-s-done">0</div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;
+                      letter-spacing:.1em;color:var(--t3);margin-top:2px;">Depts Done</div>
+        </div>
+        <div style="background:var(--bg3);border:1.5px solid var(--border);
+                    border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;
+                      line-height:1;color:var(--blue);" id="sall-s-checked">0</div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;
+                      letter-spacing:.1em;color:var(--t3);margin-top:2px;">Checkboxes</div>
+        </div>
+        <div style="background:var(--bg3);border:1.5px solid var(--border);
+                    border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;
+                      line-height:1;color:var(--green);" id="sall-s-profs">0</div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;
+                      letter-spacing:.1em;color:var(--t3);margin-top:2px;">Professors</div>
+        </div>
+        <div style="background:var(--bg3);border:1.5px solid var(--border);
+                    border-radius:12px;padding:10px;text-align:center;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;
+                      line-height:1;color:var(--red);" id="sall-s-err">0</div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;
+                      letter-spacing:.1em;color:var(--t3);margin-top:2px;">Errors</div>
+        </div>
+      </div>
+
+      <!-- Department rows -->
+      <div id="sall-dept-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+
+      <!-- Log -->
+      <div id="sall-log" style="display:none;margin-top:14px;background:var(--bg3);
+           border:1.5px solid var(--border);border-radius:10px;
+           max-height:120px;overflow-y:auto;padding:10px 14px;
+           font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--t3);"></div>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 26px 18px;border-top:1.5px solid var(--border);
+                background:var(--card);display:flex;align-items:center;
+                justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div style="font-size:11px;color:var(--t3);line-height:1.7;" id="sall-foot-txt">
+        Ready — switching tabs will <strong style="color:var(--t2);">not</strong> stop the sync
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="closeSyncAllModal()" id="sall-cancel-btn"
+          style="background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.18);
+                 color:var(--t2);border-radius:12px;padding:10px 18px;font-size:13px;
+                 font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+                 cursor:pointer;font-family:inherit;transition:all .18s;">Cancel</button>
+        <button onclick="startSyncAll()" id="sall-start-btn"
+          style="display:inline-flex;align-items:center;gap:7px;
+                 background:linear-gradient(135deg,#4DA3FF,#1D4ED8);color:#fff;
+                 border:none;border-radius:12px;padding:10px 22px;font-size:13px;
+                 font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+                 cursor:pointer;font-family:inherit;
+                 box-shadow:0 4px 16px rgba(77,163,255,.35);
+                 transition:all .22s cubic-bezier(.34,1.56,.64,1);">
+          🔄 <span id="sall-start-label">Sync All Now</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
 
 </body>
 </html>
